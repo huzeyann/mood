@@ -1,0 +1,25 @@
+in_dim: 384
+mood_dim: -1
+out_dim: 1280
+latent_dim: 512
+n_layer: 4
+
+n_eig: 32
+eigvec_loss: 1
+recon_loss_fg: 1
+recon_loss_fg_dummy: 0.0
+recon_loss_bg: 0.1
+recon_loss_bg_dummy: 0.0
+riemann_curvature_loss: 0.0
+axis_align_loss: 0.00001
+repulsion_loss: 0.00001
+boundary_loss: 0.001
+
+grad_clip_val: 1.0
+
+log_dir: /data/logs_mar25/n25c9600/
+name: debug
+
+steps: 1000
+batch_size: 514
+lr: 0.0003
