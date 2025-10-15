@@ -236,6 +236,44 @@ def interpolate_two_images(image1, image2, model, ws, n_cluster=20, match_method
 
 if USE_HUGGINGFACE_ZEROGPU:
     interpolate_two_images = spaces.GPU(duration=60)(interpolate_two_images)
+    
+def interpolate_two_images_no_compression(image1, image2, ws, n_cluster=20, match_method='hungarian', unit_norm_direction=False, dino_matching=True):
+    clip_img_transform = make_transform(224)
+    dino_img_transform = make_transform(256)
+    clip_images = torch.stack([clip_img_transform(image) for image in [image1, image2]])
+    dino_images = torch.stack([dino_img_transform(image) for image in [image1, image2]])
+    dino_image_embeds = extract_dino_image_embeds(dino_images)
+    clip_image_embeds = extract_clip_image_embeds(clip_images)
+    input_embeds = dino_image_embeds
+
+    b, l, c = input_embeds.shape
+    joint_eigvecs, joint_rgbs = ncut_tsne_multiple_images(input_embeds, n_eig=30, gamma=0.5)
+    single_eigvecs = kway_cluster_per_image(input_embeds, n_cluster=n_cluster, gamma=0.5)
+    # single_eigvecs = kway_cluster_multiple_images(input_embeds, n_cluster=n_cluster, gamma=0.5)
+    # discrete_rgbs = get_single_multi_discrete_rgbs(joint_rgbs, single_eigvecs)
+
+    A_to_B = match_centers_two_images(dino_image_embeds[0], dino_image_embeds[1], single_eigvecs[0], single_eigvecs[1], match_method=match_method)
+
+    if dino_matching:
+        direction = find_direction_two_images(clip_image_embeds, single_eigvecs, A_to_B, unit_norm_direction=unit_norm_direction)
+    else:
+        direction = clip_image_embeds[1] - clip_image_embeds[0]
+
+    ip_model = load_ipadapter()
+    
+    n_steps = len(ws)
+    interpolated_images = []
+    for i_w, w in enumerate(ws):
+        # print(w)
+        A_interpolated = clip_image_embeds[0] + direction * w
+        gen_images = generate(ip_model, A_interpolated, num_samples=1)
+        interpolated_images.extend(gen_images)
+    
+    return interpolated_images
+
+if USE_HUGGINGFACE_ZEROGPU:
+    interpolate_two_images_no_compression = spaces.GPU(duration=60)(interpolate_two_images_no_compression)
+
 
 def plot_loss(model):
     # Plot loss curves from trainer
