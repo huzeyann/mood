@@ -441,9 +441,9 @@ class CompressionModel(pl.LightningModule):
         """Compute NCut eigenvectors for masked features."""
         masked_features = features[masks]
         if len(masked_features) > 0:
-            # gamma = masked_features.var(0).sum().item()
+            gamma = masked_features.var(0).sum().item()
             # print(f"gamma: {gamma}")
-            gamma = 1000
+            # gamma = 1000  
             eigenvectors, _ = compute_ncut_eigenvectors(
                 masked_features, self.config.n_eig, gamma=gamma
             )

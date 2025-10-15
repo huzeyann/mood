@@ -27,10 +27,10 @@ from app import train_mood_space, perform_two_image_interpolation
 
 # %%
 # Load and prepare input images
-path1 = "./images/jimi_portrait.jpg"
-path2 = "./images/jimi_action.jpg"
-# path1 = "./images/dog1.jpg"
-# path2 = "./images/fish.jpg"
+# path1 = "./images/jimi_portrait.jpg"
+# path2 = "./images/jimi_action.jpg"
+path1 = "./images/dog1.jpg"
+path2 = "./images/fish.jpg"
 
 # Resize images to consistent size
 image1 = Image.open(path1).resize((512, 512), resample=Image.Resampling.LANCZOS).convert("RGB")
@@ -68,7 +68,7 @@ print("Training completed!")
 
 # %%
 # Define interpolation weights (0.0 = image1, 1.0 = image2)
-interpolation_weights = np.linspace(0.0, 1.0, 8).tolist()
+interpolation_weights = np.linspace(0.0, 2.0, 8).tolist()
 print(f"Interpolation weights: {interpolation_weights}")
 
 # Generate interpolated images

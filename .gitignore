@@ -1,4 +1,6 @@
 lightning_logs/
+experiments/
+experiments/*
 old/
 .DS_Store
 .venv/
