@@ -148,7 +148,7 @@ class CompressionModel(pl.LightningModule):
         super().__init__()
         self.id_mapping = id_mapping
 
-        self.downsample = 4
+        self.downsample = cfg.dino_sr_ratio
 
         self.compress = MLP(cfg.in_dim, cfg.mood_dim, cfg.n_layer, cfg.latent_dim)
         #self.uncompress = MLP(cfg.mood_dim, cfg.out_dim, cfg.n_layer, cfg.latent_dim)
@@ -180,11 +180,44 @@ class CompressionModel(pl.LightningModule):
         if self.id_mapping:
             feats_uncompressed_dummy = self.uncompress_dummy(feats_compressed)
         
-        eigvec_gt, eigval_gt = ncut_wrapper(feats[fg_masks], self.cfg.n_eig)
-        eigvec_hat, eigval_hat = ncut_wrapper(rearrange(feats_compressed, 'b l c -> (b l) c'), self.cfg.n_eig)
-        eigvec_hat = eigvec_hat[fg_masks.flatten()]
+        # subsample eigvec for speed up
+        with torch.no_grad():
+            shape = fg_masks.shape
+            fg_masks = fg_masks.flatten().cpu().numpy()
+            eigvec_masks = np.zeros(fg_masks.shape, dtype=bool)
+            non_zero_indices = np.where(fg_masks)[0]
+            shuffled_indices = np.random.permutation(non_zero_indices.shape[0])
+            non_zero_indices = non_zero_indices[shuffled_indices[:500]]
+            eigvec_masks[non_zero_indices] = 1
+            eigvec_masks = eigvec_masks.reshape(shape)
+            fg_masks = fg_masks.reshape(shape)
+        if self.cfg.eigvec_loss > 0 or self.cfg.flag_loss > 0:
+            eigvec_gt, eigval_gt = ncut_wrapper(feats[eigvec_masks], self.cfg.n_eig)
+        if self.cfg.eigvec_loss > 0:
+            eigvec_hat, eigval_hat = ncut_wrapper(feats_compressed[eigvec_masks], self.cfg.n_eig)
 
         total_loss = 0
+        if self.cfg.flag_loss > 0:
+            gt_sim = 0
+            n_sum = 0 
+            n_eig = 2
+            while True:
+                n_eig *= 2
+                _eigvec = eigvec_gt[:, :n_eig]
+                _eigvec = F.normalize(_eigvec, dim=-1)
+                gt_sim += _eigvec @ _eigvec.T
+                n_sum += 1
+                if n_eig > eigvec_gt.shape[1]:
+                    break
+            gt_sim /= n_sum
+            
+            hat_sim = feats_compressed[eigvec_masks] @ feats_compressed[eigvec_masks].T
+            
+            loss = F.smooth_l1_loss(gt_sim, hat_sim)
+            self.log("loss/flag", loss, prog_bar=True)
+            total_loss += loss * self.cfg.flag_loss
+            self.loss_history['flag'].append(loss.item())
+
         if self.cfg.eigvec_loss > 0:
             eigvec_loss = flag_space_loss(eigvec_gt, eigvec_hat, n_eig=self.cfg.n_eig)
             self.log("loss/eigvec", eigvec_loss, prog_bar=True)

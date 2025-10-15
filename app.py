@@ -6,7 +6,7 @@ import os
 
 from my_ipadapter_model import load_ipadapter, image_grid, generate
 from my_intrinsic_dim import get_intrinsic_dim
-from dino_clip_featextract import extract_dino_image_embeds, extract_dinov3_image_embeds, extract_clip_image_embeds, dino_img_transform, clip_img_transform, img_transform_inv
+from dino_clip_featextract import extract_dino_image_embeds, extract_dinov3_image_embeds, extract_clip_image_embeds, dino_img_transform, clip_img_transform, img_transform_inv, make_transform
 from gradio_utils import add_download_button
 from my_dino_correspondence import get_correspondence_plot, ncut_tsne_multiple_images, kway_cluster_per_image, get_single_multi_discrete_rgbs, match_centers_three_images, match_centers_two_images, get_center_features
 from compression_model_mkii import CompressionModel, train_compression_model, free_memory, get_fg_mask
@@ -30,9 +30,27 @@ plt.rcParams['font.family'] = 'monospace'
 
 from omegaconf import OmegaConf
 
+BASE_CONFIG_PATH = "./config_base.yaml"
+
+def load_config(config_path):
+    cfg_base = OmegaConf.load(BASE_CONFIG_PATH)
+    cfg = OmegaConf.load(config_path)
+    cfg_base.update(cfg)
+    return cfg_base
+
+
 
 def train_mood_space(pil_images, lr=0.001, steps=5000, width=512, layers=4, dim=None, config_path="./config.yaml"): 
+
+    cfg = load_config(config_path)
+    cfg.lr = lr
+    cfg.steps = steps
+    cfg.latent_dim = width
+    cfg.n_layer = layers
+
     images = load_gradio_images_helper(pil_images)
+    dino_img_transform = make_transform(int(cfg.dino_sr_ratio * 256))
+    clip_img_transform = make_transform(224)
     dino_input_images = torch.stack([dino_img_transform(image) for image in images])
     clip_input_images = torch.stack([clip_img_transform(image) for image in images])
     dino_image_embeds = extract_dino_image_embeds(dino_input_images)
@@ -44,32 +62,14 @@ def train_mood_space(pil_images, lr=0.001, steps=5000, width=512, layers=4, dim=
         print(f"intrinsic dim is {dim}")
     else:
         print(f"using user-specified dim: {dim}")
-
-    cfg = OmegaConf.load(config_path)
     cfg.mood_dim = dim
-    cfg.lr = lr
-    cfg.steps = steps
-    cfg.latent_dim = width
-    cfg.n_layer = layers
-
-    model = CompressionModel(cfg, gradio_progress=True)  #TODO: check if gradio_progress works without gradio
+        
+    model = CompressionModel(cfg, gradio_progress=True)
     trainer = train_compression_model(model, cfg, dino_image_embeds, clip_image_embeds)
     return model, trainer
 
 if USE_HUGGINGFACE_ZEROGPU:
     train_mood_space = spaces.GPU(duration=60)(train_mood_space)
-
-def train_mood_space_visualize(image_embeds, dim=2, config_path="/workspace/n25c9900_2d.yaml"): 
-
-    cfg = OmegaConf.load(config_path)
-    cfg.mood_dim = dim
-    cfg.in_dim = image_embeds.shape[-1]
-    cfg.out_dim = image_embeds.shape[-1]
-
-    model = CompressionModel(cfg, gradio_progress=True)  #TODO: check if gradio_progress works without gradio
-    trainer = train_compression_model(model, cfg, image_embeds, image_embeds)
-    return model, trainer
-
 
 
 def load_gradio_images_helper(pil_images):
@@ -128,13 +128,15 @@ def find_direction_two_images(image_embeds, eigvecs, A_to_B, unit_norm_direction
             direction_for_A[mask] = direction_A_to_B[i_cluster]
     return direction_for_A
 
-def analogy_three_images(image_list, model, ws, n_cluster=30, n_sample=1, match_method='hungarian'):
+def analogy_three_images(image_list, model, ws, n_cluster=30, n_sample=1, match_method='hungarian', config_path="./config.yaml"):
     # image_list: A2, A1, B1
     # ws: list of float
     # n_cluster: int
     # n_sample: int
     # match_method: str
     free_memory()
+    cfg = load_config(config_path)
+    dino_img_transform = make_transform(int(cfg.dino_sr_ratio * 256))
     images = torch.stack([dino_img_transform(image) for image in image_list])
     dino_image_embeds = extract_dino_image_embeds(images)
     compressed_image_embeds = model.compress(dino_image_embeds)
@@ -186,8 +188,10 @@ def analogy_three_images(image_list, model, ws, n_cluster=30, n_sample=1, match_
 if USE_HUGGINGFACE_ZEROGPU:
     analogy_three_images = spaces.GPU(duration=60)(analogy_three_images)
 
-def interpolate_two_images(image1, image2, model, ws, n_cluster=20, match_method='hungarian', unit_norm_direction=False, dino_matching=True, seed=None):
+def interpolate_two_images(image1, image2, model, ws, n_cluster=20, match_method='hungarian', unit_norm_direction=False, dino_matching=True, seed=None, config_path="./config.yaml"):
     free_memory()
+    cfg = load_config(config_path)
+    dino_img_transform = make_transform(int(cfg.dino_sr_ratio * 256))
     images = torch.stack([dino_img_transform(image) for image in [image1, image2]])
     dino_image_embeds = extract_dino_image_embeds(images)
     compressed_image_embeds = model.compress(dino_image_embeds)

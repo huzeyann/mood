@@ -76,17 +76,16 @@ def extract_clip_image_embeds(images, batch_size=32):
 
 from torchvision import transforms
 
-dino_img_transform = transforms.Compose([
-    transforms.Resize((256 * 4, 256 * 4)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])  
+def make_transform(size):
+    return transforms.Compose([
+        transforms.Resize((size, size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-clip_img_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+dino_img_transform = make_transform(256 * 2)
+
+clip_img_transform = make_transform(224)
 
 img_transform_inv = transforms.Compose([
     transforms.Normalize(mean=[0.0, 0.0, 0.0], std=[1/0.229, 1/0.224, 1/0.225]),
