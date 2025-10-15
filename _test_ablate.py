@@ -25,7 +25,8 @@ def get_interpolation_images(path1, path2, config_path):
     return all_images
 
 # %%
-config_paths = ["./config_lossablate_eigvec.yaml", "./config_lossablate_flag.yaml", "./config_lossablate_recon.yaml", "./config_lossablate_recon_repluse.yaml"]
+config_paths = ["./config_lossablate_eigvec.yaml", "./config_lossablate_flag.yaml", "./config_lossablate_flag_repulse.yaml", "./config_lossablate_recon.yaml", "./config_lossablate_recon_repluse.yaml"]
+
 
 for config_path in config_paths:
     all_images = get_interpolation_images(path1, path2, config_path)

@@ -14,9 +14,9 @@ recon_loss_fg_dummy: 0.0
 recon_loss_bg: 0.0
 recon_loss_bg_dummy: 0.0
 riemann_curvature_loss: 0.0
-axis_align_loss: 0.0001
-repulsion_loss: 0.0001
-boundary_loss: 0.1
+axis_align_loss: 0.0
+repulsion_loss: 0.0
+boundary_loss: 0.0
 
 grad_clip_val: 1.0
 
