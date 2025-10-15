@@ -13,4 +13,4 @@ This repository is for the local deployment of the [HuggingFace Demo](https://hu
 
 step1: pip install -r ./requirements.txt
 
-step2: run `python app.py` or `_demo__interpolate.ipynb`
+step2: run `python app.py` or `example_interpolate.ipynb`
