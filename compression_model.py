@@ -106,9 +106,10 @@ def compute_ncut_eigenvectors(features: torch.Tensor, n_eig: int, gamma: float =
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Eigenvectors and eigenvalues
     """
-    affinity_matrix = rbf_affinity(features, gamma=gamma)
-    eigenvectors, eigenvalues = _plain_ncut(affinity_matrix, n_eig)
-    return eigenvectors, eigenvalues
+    # eigvec, eigval = ncut_fn(features, n_eig=n_eig, gamma=gamma, track_grad=True, device=features.device)
+    affinity = rbf_affinity(features, gamma=gamma)
+    eigvec, eigval = _plain_ncut(affinity, n_eig=n_eig)
+    return eigvec, eigval
 
 
 # ===== Foreground Mask Generation =====
@@ -325,7 +326,7 @@ class CompressionModel(pl.LightningModule):
         # Store configuration
         self.config = config
         self.use_identity_mapping = use_identity_mapping
-        self.downsample_factor = 4
+        self.downsample_factor = 1
         
         # Build encoder-decoder architecture
         self.encoder = MultiLayerPerceptron(
@@ -382,13 +383,11 @@ class CompressionModel(pl.LightningModule):
         if self.use_identity_mapping:
             identity_reconstructed = self.identity_decoder(compressed_features)
         
-        # Initialize NCut gamma on first step
-        if self.trainer.global_step == 0:
-            self.ncut_gamma = find_gamma_by_degree_after_fps(input_features[fg_masks], 0.1)
-        
         # Compute NCut eigenvectors for geometric consistency
-        gt_eigenvectors = self._compute_ncut_eigenvectors(input_features, fg_masks)
-        pred_eigenvectors = self._compute_ncut_eigenvectors(compressed_features, fg_masks)
+        # subsample fg_masks, reduce the number of nodes for speed up
+        eigvec_masks = self._subsample_eigvec_masks(fg_masks)
+        gt_eigenvectors = self._compute_ncut_eigenvectors(input_features, eigvec_masks)
+        pred_eigenvectors = self._compute_ncut_eigenvectors(compressed_features, eigvec_masks)
         
         # Aggregate all loss components
         total_loss = self._compute_total_loss(
@@ -399,6 +398,18 @@ class CompressionModel(pl.LightningModule):
         
         self.log("loss/total", total_loss, prog_bar=True)
         return total_loss
+    
+    def _subsample_eigvec_masks(self, fg_masks: torch.Tensor, n_subsample: int = 500) -> torch.Tensor:
+        with torch.no_grad():
+            shape = fg_masks.shape
+            fg_masks = fg_masks.flatten().cpu().numpy()
+            subsampled_masks = np.zeros(fg_masks.shape, dtype=bool)
+            non_zero_indices = np.where(fg_masks)[0]
+            shuffled_indices = np.random.permutation(non_zero_indices.shape[0])
+            non_zero_indices = non_zero_indices[shuffled_indices[:n_subsample]]
+            subsampled_masks[non_zero_indices] = 1
+            subsampled_masks = subsampled_masks.reshape(shape)
+            return subsampled_masks
     
     def _downsample_masks(self, fg_masks: torch.Tensor) -> torch.Tensor:
         """Downsample foreground masks to match decoder output resolution."""
@@ -430,8 +441,11 @@ class CompressionModel(pl.LightningModule):
         """Compute NCut eigenvectors for masked features."""
         masked_features = features[masks]
         if len(masked_features) > 0:
+            # gamma = masked_features.var(0).sum().item()
+            # print(f"gamma: {gamma}")
+            gamma = 1000
             eigenvectors, _ = compute_ncut_eigenvectors(
-                masked_features, self.config.n_eig, gamma=self.ncut_gamma
+                masked_features, self.config.n_eig, gamma=gamma
             )
             return eigenvectors
         else:

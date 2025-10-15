@@ -38,7 +38,8 @@ DEFAULT_CHANNELS_TO_REMOVE = 24
 
 # High-resolution transform for DINO models
 dino_image_transform = transforms.Compose([
-    transforms.Resize((256 * 4, 256 * 4)),  # High resolution for detailed features
+    # transforms.Resize((256 * 4, 256 * 4)),  # High resolution for detailed features
+    transforms.Resize((256, 256)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])

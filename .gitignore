@@ -1,4 +1,5 @@
 lightning_logs/
+old/
 .DS_Store
 .venv/
 .idea/
