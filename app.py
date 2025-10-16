@@ -162,7 +162,7 @@ def train_mood_space(pil_images: List[Image.Image],
         logging.info(f"Estimated intrinsic dimension: {mood_dimension}")
     else:
         logging.info(f"Using user-specified dimension: {mood_dimension}")
-    
+
     # Load and configure training parameters
     config = OmegaConf.load(config_path)
     config.mood_dim = mood_dimension

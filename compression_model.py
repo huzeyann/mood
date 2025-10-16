@@ -58,10 +58,10 @@ def compute_kway_ncut_loss(ground_truth_eigvec, predicted_eigvec, n_eig: int) ->
     return F.smooth_l1_loss(gt_gram, pred_gram)
 
 
-def compute_flag_space_loss(ground_truth_eigvec, predicted_eigvec, n_eig: int, 
+def compute_eigenvector_loss(ground_truth_eigvec, predicted_eigvec, n_eig: int, 
                            start: int = 4, step_mult: int = 2) -> torch.Tensor:
     """
-    Compute flag space loss by aggregating k-way NCut losses across multiple scales.
+    Compute eigenvector loss by aggregating k-way NCut losses across multiple scales.
     
     Args:
         ground_truth_eigvec (torch.Tensor): Ground truth eigenvectors
@@ -71,7 +71,7 @@ def compute_flag_space_loss(ground_truth_eigvec, predicted_eigvec, n_eig: int,
         step_mult (int): Multiplication factor for scaling
         
     Returns:
-        torch.Tensor: Aggregated flag space loss
+        torch.Tensor: Aggregated eigenvector loss
     """
     # Handle edge cases
     if torch.all(ground_truth_eigvec == 0) or torch.all(predicted_eigvec == 0):
@@ -343,7 +343,7 @@ class CompressionModel(pl.LightningModule):
             self.identity_decoder = MultiLayerPerceptron(
                 config.mood_dim, config.in_dim, config.n_layer, config.latent_dim
             )
-        
+
         # Training utilities
         self.loss_history = defaultdict(list)
         self.enable_gradio_progress = enable_gradio_progress
@@ -375,7 +375,7 @@ class CompressionModel(pl.LightningModule):
         # Forward pass
         compressed_features = self.encoder(input_features)
         reconstructed_features = self.decoder(compressed_features)
-        
+
         # Prepare downsampled masks for spatial consistency
         downsampled_masks = self._downsample_masks(fg_masks)
         
@@ -383,11 +383,15 @@ class CompressionModel(pl.LightningModule):
         if self.use_identity_mapping:
             identity_reconstructed = self.identity_decoder(compressed_features)
         
+        # Initialize NCut gamma on first step
+        if self.trainer.global_step == 0:
+            #self.ncut_gamma = find_gamma_by_degree_after_fps(input_features[fg_masks], 0.1)
+            self.ncut_gamma = 1.0
+        
         # Compute NCut eigenvectors for geometric consistency
-        # subsample fg_masks, reduce the number of nodes for speed up
-        eigvec_masks = self._subsample_eigvec_masks(fg_masks)
-        gt_eigenvectors = self._compute_ncut_eigenvectors(input_features, eigvec_masks)
-        pred_eigenvectors = self._compute_ncut_eigenvectors(compressed_features, eigvec_masks)
+        # TODO: FIX THIS, fg_masks need to applied after eigenvector computation
+        gt_eigenvectors = self._compute_ncut_eigenvectors(input_features, fg_masks)
+        pred_eigenvectors = self._compute_ncut_eigenvectors(compressed_features, fg_masks)
         
         # Aggregate all loss components
         total_loss = self._compute_total_loss(
@@ -452,15 +456,66 @@ class CompressionModel(pl.LightningModule):
             # Return zero tensor if no masked features
             return torch.zeros((1, self.config.n_eig), device=features.device)
     
+    def _compute_multiscale_similarity(self, eigenvectors: torch.Tensor, 
+                                      start_n_eig: int = 2, step_mult: int = 2) -> torch.Tensor:
+        """
+        Compute multi-scale similarity matrix from eigenvectors.
+        
+        Aggregates normalized Gram matrices across multiple scales by doubling
+        the number of eigenvectors at each step.
+        
+        Args:
+            eigenvectors (torch.Tensor): Eigenvectors of shape (n_samples, n_eig)
+            start_n_eig (int): Starting number of eigenvectors
+            step_mult (int): Multiplication factor for scaling
+            
+        Returns:
+            torch.Tensor: Averaged similarity matrix
+        """
+        total_similarity = 0.0
+        num_scales = 0
+        current_n_eig = start_n_eig
+        max_available = eigenvectors.shape[1]
+        
+        while current_n_eig <= max_available:
+            # Extract subset of eigenvectors and normalize
+            eigvec_subset = eigenvectors[:, :current_n_eig]
+            eigvec_normalized = F.normalize(eigvec_subset, dim=-1)
+            
+            # Compute Gram matrix (similarity)
+            total_similarity += eigvec_normalized @ eigvec_normalized.T
+            num_scales += 1
+            
+            # Scale up for next iteration
+            current_n_eig *= step_mult
+        
+        # Average across scales
+        return total_similarity / num_scales if num_scales > 0 else total_similarity
+    
     def _compute_total_loss(self, input_features, target_features, compressed_features,
                            reconstructed_features, identity_reconstructed, 
                            fg_masks, downsampled_masks, gt_eigenvectors, pred_eigenvectors):
         """Compute and aggregate all loss components."""
         total_loss = 0.0
+
+        # Flag space loss - preserves multi-scale spectral structure
+        if self.config.flag_loss > 0:
+            # Compute ground truth similarity from eigenvectors
+            gt_similarity = self._compute_multiscale_similarity(gt_eigenvectors)
+            
+            # Compute predicted similarity from compressed features
+            flattened_compressed = compressed_features.flatten(0, 1)
+            pred_similarity = flattened_compressed @ flattened_compressed.T
+            
+            # Compare similarity matrices
+            flag_loss = F.smooth_l1_loss(gt_similarity, pred_similarity)
+            self.log("loss/flag", flag_loss, prog_bar=True)
+            total_loss += flag_loss * self.config.flag_loss
+            self.loss_history['flag'].append(flag_loss.item())
         
         # Eigenvector preservation loss
         if self.config.eigvec_loss > 0:
-            eigvec_loss = compute_flag_space_loss(
+            eigvec_loss = compute_eigenvector_loss(
                 gt_eigenvectors, pred_eigenvectors, n_eig=self.config.n_eig
             )
             self.log("loss/eigvec", eigvec_loss, prog_bar=True)
@@ -479,15 +534,15 @@ class CompressionModel(pl.LightningModule):
 
         # Identity mapping foreground loss
         if (self.use_identity_mapping and 
-            self.config.recon_loss_fg_dummy > 0 and 
+            self.config.recon_loss_fg_id > 0 and 
             torch.any(fg_masks)):
             
             id_fg_loss = F.smooth_l1_loss(
                 input_features[fg_masks], 
                 identity_reconstructed[fg_masks]
             )
-            self.log("loss/recon_fg_dummy", id_fg_loss, prog_bar=True)
-            total_loss += id_fg_loss * self.config.recon_loss_fg_dummy
+            self.log("loss/recon_fg_id", id_fg_loss, prog_bar=True)
+            total_loss += id_fg_loss * self.config.recon_loss_fg_id
 
         # Background reconstruction loss
         if self.config.recon_loss_bg > 0 and not torch.all(downsampled_masks):
@@ -500,15 +555,15 @@ class CompressionModel(pl.LightningModule):
 
         # Identity mapping background loss
         if (self.use_identity_mapping and 
-            self.config.recon_loss_bg_dummy > 0 and 
+            self.config.recon_loss_bg_id > 0 and 
             not torch.all(fg_masks)):
             
             id_bg_loss = F.smooth_l1_loss(
                 input_features[~fg_masks], 
                 identity_reconstructed[~fg_masks]
             )
-            self.log("loss/recon_bg_dummy", id_bg_loss, prog_bar=True)
-            total_loss += id_bg_loss * self.config.recon_loss_bg_dummy
+            self.log("loss/recon_bg_id", id_bg_loss, prog_bar=True)
+            total_loss += id_bg_loss * self.config.recon_loss_bg_id
 
         # Geometric losses on compressed features
         fg_compressed = compressed_features[fg_masks]
