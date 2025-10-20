@@ -11,6 +11,7 @@ from gradio_utils import add_download_button
 from my_dino_correspondence import get_correspondence_plot, ncut_tsne_multiple_images, kway_cluster_per_image, get_single_multi_discrete_rgbs, match_centers_three_images, match_centers_two_images, get_center_features
 from compression_model_mkii import CompressionModel, train_compression_model, free_memory, get_fg_mask
 
+import gradio as gr
 
 USE_HUGGINGFACE_ZEROGPU = os.getenv("USE_HUGGINGFACE_ZEROGPU", "false")
 
@@ -157,7 +158,7 @@ def analogy_three_images(image_list, model, ws, n_cluster=30, n_sample=1, match_
         A2_to_A1,
         A1_to_B1[A2_to_A1],
     ]
-    correspondence_image = get_correspondence_plot(original_images, single_eigvecs, cluster_orders, discrete_rgbs, hw=16 * 4, n_cols=10)
+    correspondence_image = get_correspondence_plot(original_images, single_eigvecs, cluster_orders, discrete_rgbs, hw=16 * 2, n_cols=10)
 
     ip_model = load_ipadapter()
     

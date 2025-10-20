@@ -77,7 +77,7 @@ def extract_clip_image_embeds(images, batch_size=32):
 from torchvision import transforms
 
 dino_img_transform = transforms.Compose([
-    transforms.Resize((256 * 4, 256 * 4)),
+    transforms.Resize((256 * 2, 256 * 2)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])  

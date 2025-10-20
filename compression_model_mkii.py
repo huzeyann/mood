@@ -148,7 +148,7 @@ class CompressionModel(pl.LightningModule):
         super().__init__()
         self.id_mapping = id_mapping
 
-        self.downsample = 4
+        self.downsample = 2
 
         self.compress = MLP(cfg.in_dim, cfg.mood_dim, cfg.n_layer, cfg.latent_dim)
         #self.uncompress = MLP(cfg.mood_dim, cfg.out_dim, cfg.n_layer, cfg.latent_dim)
