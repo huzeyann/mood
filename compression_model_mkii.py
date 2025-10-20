@@ -130,16 +130,19 @@ class PoolingCNN(nn.Module):
 class MLPDown(nn.Module):
     def __init__(self, in_dim, out_dim, n_layer=4, latent_dim=4096, downsample=4):
         super().__init__()
+        self.pooling = nn.Sequential(
+            PoolingCNN(in_dim, downsample),
+            nn.GELU(),
+        )
         self.mlp = nn.Sequential(
             nn.Linear(in_dim, latent_dim),
-            nn.GELU(),
-            PoolingCNN(latent_dim, downsample),
             nn.GELU(),
             *[nn.Sequential(nn.Linear(latent_dim, latent_dim), nn.GELU()) for _ in range(n_layer)],
             nn.Linear(latent_dim, out_dim)
         )
     
     def forward(self, x):
+        x = self.pooling(x)
         return self.mlp(x)
 
 
@@ -185,6 +188,29 @@ class CompressionModel(pl.LightningModule):
         eigvec_hat = eigvec_hat[fg_masks.flatten()]
 
         total_loss = 0
+        if self.cfg.flag_loss > 0:
+            compressed = feats_compressed[fg_masks]
+            gt_sim = 0
+            n_eig = 2
+            n_sum = 0
+            while n_eig <= self.cfg.n_eig:
+                n_eig *= 2
+                _eigvec = eigvec_gt[:, 1:n_eig]
+                _eigvec = F.normalize(_eigvec, dim=-1)
+                sim = _eigvec @ _eigvec.T
+                gt_sim += sim
+                n_sum += 1
+            gt_sim /= n_sum
+            hat_sim = compressed @ compressed.T
+            # vmax, vmin, vmean, vstd = torch.max(gt_sim), torch.min(gt_sim), torch.mean(gt_sim), torch.std(gt_sim)
+            # print(f"gt_sim: max={vmax:.4f}, min={vmin:.4f}, mean={vmean:.4f}, std={vstd:.4f}")
+            # norms = torch.norm(compressed, dim=-1)
+            # print(f"norms: max={norms.max():.4f}, min={norms.min():.4f}, mean={norms.mean():.4f}, std={norms.std():.4f}")
+            flag_loss = F.smooth_l1_loss(gt_sim, hat_sim)
+            self.log("loss/flag", flag_loss, prog_bar=True)
+            total_loss += flag_loss * self.cfg.flag_loss
+            self.loss_history['flag'].append(flag_loss.item())
+        
         if self.cfg.eigvec_loss > 0:
             eigvec_loss = flag_space_loss(eigvec_gt, eigvec_hat, n_eig=self.cfg.n_eig)
             self.log("loss/eigvec", eigvec_loss, prog_bar=True)

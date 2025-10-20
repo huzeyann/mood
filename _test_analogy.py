@@ -20,28 +20,28 @@ image4 = Image.open(path4).resize((512, 512), resample=Image.Resampling.LANCZOS)
 grid = image_grid([image1, image2, image3, image4], 1, 4)
 grid
 # %%
-config_path = "./config.yaml"
-model, trainer = train_mood_space(
-    pil_images=[image1, image2, image3], 
-    steps=1000,
-    config_path=config_path,
-)
-# %%
-interpolation_weights = np.linspace(0.0, 1.0, 10).tolist()
-correspondence_plot, fig, interpolated_images = analogy_three_images(
-    [image3, image1, image2], 
-    model, 
-    interpolation_weights,
-    n_cluster=10,
-    match_method='hungarian',
-)
-all_images = interpolated_images
+for _ in range(10):
+    config_path = "./config_flag.yaml"
+    model, trainer = train_mood_space(
+        pil_images=[image1, image2, image3], 
+        steps=1000,
+        config_path=config_path,
+    )
+    interpolation_weights = np.linspace(0.0, 1.0, 10).tolist()
+    correspondence_plot, fig, interpolated_images = analogy_three_images(
+        [image3, image1, image2], 
+        model, 
+        interpolation_weights,
+        n_cluster=10,
+        match_method='hungarian',
+    )
+    all_images = interpolated_images
 
-display_size = (256, 256)
-resized_images = [img.resize(display_size, Image.Resampling.LANCZOS) for img in all_images]
-result_grid = image_grid(resized_images, 2, len(resized_images)//2)
-plt.show()
-display(result_grid)
+    display_size = (256, 256)
+    resized_images = [img.resize(display_size, Image.Resampling.LANCZOS) for img in all_images]
+    result_grid = image_grid(resized_images, 2, len(resized_images)//2)
+    plt.show()
+    display(result_grid)
 
 
 # %%
