@@ -11,6 +11,7 @@ from gradio_utils import add_download_button
 from my_dino_correspondence import get_correspondence_plot, ncut_tsne_multiple_images, kway_cluster_per_image, get_single_multi_discrete_rgbs, match_centers_three_images, match_centers_two_images, get_center_features
 from compression_model_mkii import CompressionModel, train_compression_model, free_memory, get_fg_mask
 
+import gradio as gr
 
 USE_HUGGINGFACE_ZEROGPU = os.getenv("USE_HUGGINGFACE_ZEROGPU", "false")
 
