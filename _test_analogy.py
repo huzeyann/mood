@@ -21,18 +21,18 @@ grid = image_grid([image1, image2, image3, image4], 1, 4)
 grid
 # %%
 for _ in range(10):
-    config_path = "./config_flag.yaml"
+    config_path = "./config.yaml"
     model, trainer = train_mood_space(
-        pil_images=[image1, image2, image3], 
+        pil_images=[image1, image2, image3, image4], 
         steps=1000,
         config_path=config_path,
     )
-    interpolation_weights = np.linspace(0.0, 1.0, 10).tolist()
+    interpolation_weights = np.linspace(0.0, 2.0, 10).tolist()
     correspondence_plot, fig, interpolated_images = analogy_three_images(
         [image3, image1, image2], 
         model, 
         interpolation_weights,
-        n_cluster=10,
+        n_cluster=20,
         match_method='hungarian',
     )
     all_images = interpolated_images
